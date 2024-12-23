@@ -19,7 +19,13 @@ void task_init() {
     // 4. 设置 idle 的 pid 为 0
     // 5. 将 current 和 task[0] 指向 idle
 
-    /* YOUR CODE HERE */
+    idle = (struct task_struct *)kalloc();
+    idle->state = TASK_RUNNING;
+    idle->counter = 0;
+    idle->priority = 0;
+    idle->pid = 0;
+    current = idle;
+    task[0] = idle;
 
     // 1. 参考 idle 的设置，为 task[1] ~ task[NR_TASKS - 1] 进行初始化
     // 2. 其中每个线程的 state 为 TASK_RUNNING, 此外，counter 和 priority 进行如下赋值：
@@ -29,7 +35,16 @@ void task_init() {
     //     - ra 设置为 __dummy（见 4.2.2）的地址
     //     - sp 设置为该线程申请的物理页的高地址
 
-    /* YOUR CODE HERE */
+    for (int i = 1; i < NR_TASKS; ++i)
+    {
+        task[i] = (struct task_struct *)kalloc();
+        task[i]->state = TASK_RUNNING;
+        task[i]->counter = 0;
+        task[i]->priority = PRIORITY_MIN + rand() % (PRIORITY_MAX - PRIORITY_MIN + 1);
+        task[i]->pid = i;
+        task[i]->thread.ra = (uint64_t)__dummy;
+        task[i]->thread.sp = (uint64_t)task[i] + PGSIZE;
+    }
 
     printk("...task_init done!\n");
 }
@@ -72,4 +87,48 @@ void dummy() {
             #endif
         }
     }
+}
+
+extern void __switch_to(struct task_struct *prev, struct task_struct *next);
+
+void switch_to(struct task_struct *next)
+{
+
+    if (current == next)
+        return;
+    struct task_struct *prev = current;
+    current = next;
+    __switch_to(prev, next);
+}
+
+void do_timer()
+{
+    if (current == idle || current->counter == 0)
+    {
+        schedule();
+    }
+    else
+    {
+        current->counter--;
+        if (current->counter == 0)
+        {
+            schedule();
+        }
+    }
+}
+
+void schedule()
+{
+    struct task_struct *next = idle;
+    for (int i = 1; i < NR_TASKS; ++i)
+        if (task[i]->counter > next->counter)
+            next = task[i];
+    if (next->counter == 0)
+        for (int i = 1; i < NR_TASKS; ++i)
+        {
+            task[i]->counter = task[i]->priority;
+            if (task[i]->counter > next->counter)
+                next = task[i];
+        }
+    switch_to(next);
 }
